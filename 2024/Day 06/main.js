@@ -5,18 +5,27 @@ const input = fs.readFileSync(__dirname+'/input.txt', 'utf8');
 
 class Map {
     map;
+    initialMap;
     
     getField(pos) {
-        return this.map[pos.y] ? this.map[pos.y][pos.x] : false;
+        return this.map[pos.y] ? this.map[pos.y][pos.x] ? this.map[pos.y][pos.x] : false : false;
     }
     setField(pos, val) {
         this.map[pos.y][pos.x] = val;
     }
 
     constructor(mapString) {
-        this.map = mapString.split("\n").map(el=>el.trim());
-        for (let i = 0; i < this.map.length; i++) {
-            this.map[i] = this.map[i].split("");
+        this.initialMap = mapString.split("\n").map(el=>el.trim());
+        for (let i = 0; i < this.initialMap.length; i++) {
+            this.initialMap[i] = this.initialMap[i].split("");
+        }
+        this.reset();
+    }
+
+    reset() {
+        this.map = [];
+        for (const row of this.initialMap) {
+            this.map.push([...row]);
         }
     }
 
@@ -24,12 +33,12 @@ class Map {
         let mapString = "";
         let row = 0;
     
-        this.loop((y, x)=>{
-            if (row != y) {
-                row = y;
+        this.loop((pos)=>{
+            if (row != pos.y) {
+                row = pos.y;
                 mapString += "\n";
             }
-            mapString += this.map[y][x];
+            mapString += this.getField(pos);
         });
     
         console.log(mapString);
@@ -38,7 +47,7 @@ class Map {
     loop(callback) {
         for (let y = 0; y < this.map.length; y++) {
             for (let x = 0; x < this.map[y].length; x++) {
-                const cb = callback(y, x);
+                const cb = callback({y, x});
                 if (cb) return cb;
             }
         }
@@ -91,8 +100,10 @@ class Guard {
 const map = new Map(input);
 //map.print();
 
-const guard = map.loop((y, x)=>{
-    if (Guard.states[map.getField({y, x})] !== undefined) return new Guard(Guard.states[map.getField({y, x})], {y, x});
+
+/* A1 */
+const guard = map.loop((pos)=>{
+    if (Guard.states[map.getField(pos)] !== undefined) return new Guard(Guard.states[map.getField(pos)], pos);
 });
 guard.simulateWalking();
 
@@ -100,9 +111,66 @@ guard.simulateWalking();
 //map.print();
 
 let walkedFields = 0;
-map.loop((x, y)=>{
-    if (map.getField({y, x}) == "X") walkedFields++;
+map.loop((pos)=>{
+    if (map.getField(pos) == "X") walkedFields++;
 });
-console.log(walkedFields);
+console.log("Walked Fields", walkedFields);
+
+
+/* A2 */
+class DetectLoopGuard extends Guard {
+    initialPos;
+    initialState;
+
+    constructor(state, pos) {
+        super(state, pos);
+        this.initialPos = pos;
+        this.initialState = state;
+    }
+
+    reset() {
+        this.state = this.initialState;
+        this.pos = {...this.initialPos};
+    }
+
+    simulateWalking() {
+        while(map.getField(this.pos) !== false) {
+            if (map.getField(this.pos).includes(this.state)) return true;
+            this.walk();
+        }
+        return false;
+    }
+
+    walk() {
+        const newPos = this.getNewPos[this.state](this.pos.y, this.pos.x);
+        if (map.getField(newPos) == "#") {
+            this.turn();
+            return;
+        }
+        map.setField(this.pos, map.getField(this.pos)+this.state);
+        this.pos = newPos;
+    }
+
+}
+
+const pathFields = [];
+map.loop((pos) =>{
+    if (map.getField(pos) == "X") pathFields.push(pos);
+    if (pathFields.length == walkedFields) return true;
+});
+map.reset();
+
+const dlGuard = map.loop((pos)=>{
+    if (Guard.states[map.getField(pos)] !== undefined) return new DetectLoopGuard(Guard.states[map.getField(pos)], pos);
+});
+
+let loopsDetected = 0;
+for (const pos of pathFields) {
+    map.setField(pos, "#");
+    if (dlGuard.simulateWalking()) loopsDetected++;
+    dlGuard.reset();
+    map.reset();    
+}
+console.log("Loops", loopsDetected);
 
 
